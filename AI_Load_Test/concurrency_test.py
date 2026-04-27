@@ -1,3 +1,4 @@
+# Import required libraries for async requests, data handling, ML, and system monitoring
 import asyncio
 import aiohttp
 import time
@@ -7,19 +8,22 @@ import random
 import psutil
 import matplotlib.pyplot as plt
 
+# Import ML utilities
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, VotingRegressor, IsolationForest
 from sklearn.linear_model import LogisticRegression
 from scipy import stats
 
+# Set random seeds for reproducibility
 np.random.seed(42)
 random.seed(42)
 
-
+# API configuration
 BASE_URL = ""
 NOTES_URL = ""
 
+# Load testing parameters
 START_USERS = 1
 MAX_USERS = 2000
 
@@ -30,12 +34,14 @@ NUM_TRIALS = 5
 KFOLD_SPLITS = 5
 
 
+# Function to set target API endpoint
 def set_target_api(url):
     global BASE_URL, NOTES_URL
     BASE_URL = url
     NOTES_URL = url
 
 
+# Adaptive load increment based on performance
 def get_adaptive_step(latency, error_rate):
     if error_rate > 0.2 or latency > 2000:
         return 50
@@ -44,12 +50,15 @@ def get_adaptive_step(latency, error_rate):
     else:
         return 200
 
+
+# Get current system CPU and memory usage
 def get_system_metrics():
     cpu = psutil.cpu_percent(interval=None)
     memory = psutil.virtual_memory().percent
     return cpu, memory
 
 
+# Calculate 95% confidence interval for latency
 def latency_confidence_interval(latencies):
 
     if len(latencies) < 2:
@@ -71,6 +80,7 @@ def latency_confidence_interval(latencies):
     return ci_low, ci_high
 
 
+# Send a single async request and measure latency
 async def send_request(session):
 
     start = time.perf_counter()
@@ -86,6 +96,8 @@ async def send_request(session):
 
     return latency, error
 
+
+# Run load test for given number of users
 async def run_load(users):
 
     timeout = aiohttp.ClientTimeout(total=TIMEOUT)
@@ -98,16 +110,19 @@ async def run_load(users):
         timeout=timeout
     ) as session:
 
+        # Create async tasks for concurrent requests
         tasks = [send_request(session) for _ in range(users)]
         results = await asyncio.gather(*tasks)
 
     total_duration = time.perf_counter() - start_total
 
+    # Separate latencies and errors
     latencies, errors = zip(*results)
 
     latencies = np.array(latencies)
     errors = np.array(errors)
 
+    # Compute performance metrics
     avg_latency = np.mean(latencies)
     p95_latency = np.percentile(latencies, 95)
 
@@ -129,6 +144,7 @@ async def run_load(users):
     )
 
 
+# Collect data for a single trial
 async def collect_trial(trial_id):
 
     print(f"\n🔬 Trial {trial_id} Starting...\n")
@@ -149,6 +165,7 @@ async def collect_trial(trial_id):
             ci_high
         ) = await run_load(users)
 
+        # Print real-time performance
         print(
             f"Trial {trial_id} | Users={users:4} | "
             f"Avg={avg_latency:8.2f}ms | "
@@ -156,6 +173,7 @@ async def collect_trial(trial_id):
             f"Err={error_rate:.3f}"
         )
 
+        # Store metrics
         records.append([
             trial_id,
             users,
@@ -169,9 +187,11 @@ async def collect_trial(trial_id):
             ci_high
         ])
 
+        # Adaptive step increase
         step = get_adaptive_step(avg_latency, error_rate)
         users += step
 
+    # Convert to DataFrame
     df = pd.DataFrame(records, columns=[
         "trial",
         "users",
@@ -187,6 +207,8 @@ async def collect_trial(trial_id):
 
     return df
 
+
+# Feature engineering for ML models
 def feature_engineering(df):
 
     df["load_factor"] = df["users"] / MAX_USERS
@@ -198,6 +220,8 @@ def feature_engineering(df):
 
     return df
 
+
+# Train regression model to predict latency
 def train_regression_model(df):
 
     features = [
@@ -214,6 +238,7 @@ def train_regression_model(df):
 
     kf = KFold(n_splits=KFOLD_SPLITS, shuffle=True, random_state=42)
 
+    # Cross-validation training
     for train_idx, test_idx in kf.split(X_scaled):
         model = VotingRegressor([
             ("gb", GradientBoostingRegressor(n_estimators=300)),
@@ -221,6 +246,7 @@ def train_regression_model(df):
         ])
         model.fit(X_scaled[train_idx], y[train_idx])
 
+    # Final model training
     final_model = model
     final_model.fit(X_scaled, y)
 
@@ -228,6 +254,8 @@ def train_regression_model(df):
 
     return df, final_model, scaler
 
+
+# Train classification model to detect failures
 def train_failure_classifier(df):
 
     df["failure_label"] = (
@@ -251,6 +279,8 @@ def train_failure_classifier(df):
 
     return df
 
+
+# Detect anomalies using Isolation Forest
 def anomaly_detection(df):
 
     iso = IsolationForest(contamination=0.1)
@@ -261,7 +291,10 @@ def anomaly_detection(df):
 
     return df
 
+
+# Estimate failure threshold based on predictions
 def estimate_failure_threshold(df):
+
     """
     Estimate the user load where system starts failing
     based on failure probability.
@@ -280,6 +313,8 @@ def estimate_failure_threshold(df):
     print("✅ System stable under tested load")
     return None
 
+
+# Simulate system behavior using trained model (Digital Twin)
 def digital_twin_simulation(model, scaler):
 
     simulated_users = np.arange(100, 10001, 200)
@@ -292,6 +327,7 @@ def digital_twin_simulation(model, scaler):
         "memory_usage": np.linspace(30,90,len(simulated_users))
     })
 
+    # Generate engineered features
     fake["load_factor"] = fake["users"] / MAX_USERS
     fake["error_pressure"] = fake["error_rate"] * 1000
     fake["efficiency"] = fake["throughput"] / 100
@@ -299,16 +335,21 @@ def digital_twin_simulation(model, scaler):
     fake["latency_volatility"] = 100
     fake["resource_pressure"] = fake["cpu_usage"] * fake["memory_usage"]
 
+    # Predict latency
     X_scaled = scaler.transform(fake.values)
     pred = model.predict(X_scaled)
 
+    # Plot simulation graph
     plt.figure()
     plt.plot(simulated_users, pred)
     plt.title("Digital Twin Simulation")
     plt.grid(True)
 
+
+# Main execution function
 async def main():
 
+    # Take API input from user
     api = input("Enter API URL: ")
     set_target_api(api)
 
@@ -319,21 +360,26 @@ async def main():
 
     all_trials = []
 
+    # Run multiple trials
     for trial in range(1, NUM_TRIALS+1):
         df_trial = await collect_trial(trial)
         all_trials.append(df_trial)
 
+    # Combine all results
     df = pd.concat(all_trials, ignore_index=True)
 
+    # Apply ML pipeline
     df = feature_engineering(df)
     df, model, scaler = train_regression_model(df)
     df = train_failure_classifier(df)
     df = anomaly_detection(df)
 
+    # Save results
     df.to_csv("ai_load_testing_results.csv", index=False)
 
     print("\n✅ COMPLETED")
 
 
+# Entry point of program
 if __name__ == "__main__":
     asyncio.run(main())

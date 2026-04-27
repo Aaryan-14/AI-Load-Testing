@@ -76,12 +76,6 @@ streamlit run ui.py
 ```
 Access the dashboard at `http://localhost:8501`
 
-### 4. Run Load Tests
-Execute the load testing framework:
-```bash
-python concurrency_test.py
-```
-
 ## 📊 Features
 
 ### API Endpoints
